@@ -7,6 +7,7 @@ import { ACCENTS, WALLPAPERS, DEFAULT_STYLE } from '../state.js';
 import { storeImage } from '../images.js';
 import { previewInjection } from '../ai.js';
 import { isNarrow, magpieListModels, magpiePing, normalizeBase, explainError } from '../st.js';
+import { baiBaiInfo, baiBaiStats, baiBaiMemoryBlock } from '../baibai.js';
 import { generateImage } from '../imagegen.js';
 import { ttsVoices, ttsVoiceList, ttsSupported, speak } from '../tts.js';
 import { autoWindow } from '../memory.js';
@@ -260,16 +261,20 @@ export function mountSettings(host, { nav }) {
                     type: 'password', value: magpie.apiKey || '', placeholder: 'sk-magpie-key-…',
                     onchange: event => patchMagpie({ apiKey: event.target.value.trim() }),
                 }))) : null,
-            magpie.enabled === true ? row({ icon: 'grid', label: '模型', hint: '填 magpie 的模型 id，例如 trae-cn/deepseek-v4.1-flash-max；也可以点下面的「拉取模型」挑' },
+            magpie.enabled === true ? row({ icon: 'grid', label: '模型', hint: '填 magpie 的模型 id，例如 trae-cn/deepseek-v4.1-flash-max；也可以点下面的「拉取模型」挑，选完自动保存' },
                 h('div', { class: 'mp-field' }, h('input', {
                     type: 'text', value: magpie.model || '', placeholder: 'trae-cn/deepseek-v4.1-flash-max',
                     onchange: event => patchMagpie({ model: event.target.value.trim() }),
                 }))) : null,
-            magpie.enabled === true ? row({ icon: 'download', label: '拉取模型列表', hint: '从 magpie 读一遍可用模型，点一下就填进上面的模型框' },
+            magpie.enabled === true ? row({ icon: 'download', label: '拉取模型列表', hint: Array.isArray(magpie.models) && magpie.models.length
+                ? '已缓存 ' + magpie.models.length + ' 个（' + new Date(Number(magpie.modelsAt) || Date.now()).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) + '），点一个直接保存'
+                : '从 magpie 读一遍可用模型，点一下就填进上面的模型框并保存' },
                 h('button', {
                     class: 'mp-btn small', type: 'button', text: '拉取',
                     onclick: () => pickMagpieModel(),
                 })) : null,
+            magpie.enabled === true && Array.isArray(magpie.models) && magpie.models.length ? row({ icon: 'grid', label: '已缓存模型', hint: '点一个就切换，不用再联网' },
+                choices(magpie.models.slice(0, 6).map(item => [item.id, item.id.split('/').pop()]), magpie.model, value => patchMagpie({ model: value }))) : null,
             magpie.enabled === true ? row({ icon: 'sliders', label: '推理强度', hint: '推理模型会用思维链；手机聊天建议 none 或 low，省 token 也更像人说话' },
                 choices([['none', '关'], ['low', '低'], ['high', '高'], ['max', '最高']], magpie.reasoning || 'low', value => patchMagpie({ reasoning: value }))) : null,
             magpie.enabled === true ? row({ icon: 'sparkle', label: '温度', hint: '越高越发散，聊天建议 0.8–1.0' },
@@ -439,23 +444,44 @@ export function mountSettings(host, { nav }) {
         ]));
 
         /* ---------------- 记忆 ---------------- */
+        const baibaiInfo = baiBaiInfo();
+        const baibaiMode = settings.baibai?.mode || 'detect';
+        const baibaiActive = baibaiInfo.available && baibaiMode !== 'off';
         wrap.appendChild(section('记忆', [
-            row({ icon: 'refresh', label: '自动总结', hint: '每攒够 N 层就悄悄总结一次' },
-                toggle(settings.memory?.auto === true, value => { patchSettings('memory.auto', value); render(); })),
-            settings.memory?.auto === true ? row({ icon: 'hash', label: '每几层总结', hint: '默认 20 层一次' },
+            row({ icon: 'book', label: '柏宝书记忆', hint: baibaiInfo.available
+                ? '已检测到柏宝书 v' + baibaiInfo.pluginVersion + '。开着就用它的记忆，手机不再重复总结。'
+                : '没检测到柏宝书。装了 ST-BaiBai-Book 之后这里会自动接上。' },
+                choices([['detect', '自动'], ['on', '强制用'], ['off', '不用']], baibaiMode, value => {
+                    patchSettings('baibai.mode', value);
+                    render();
+                })),
+            baibaiActive ? helpRow('现在走柏宝书', '手机的「自动总结」已经让路——同一段剧情不会被两边各总结一遍。关掉这一项才会恢复手机自己的总结。') : null,
+            baibaiActive ? row({ icon: 'clock', label: '带上压缩历史', hint: '用柏宝书已经压好的历史（已跳过滑动窗口内还发全文的楼层）' },
+                toggle(settings.baibai?.injectHistory !== false, value => { patchSettings('baibai.injectHistory', value); render(); })) : null,
+            baibaiActive ? row({ icon: 'user', label: '带上当前状态', hint: '时间地点、主角状态、在办的事、物品、人物态度、生活细节' },
+                toggle(settings.baibai?.injectSnapshot !== false, value => { patchSettings('baibai.injectSnapshot', value); render(); })) : null,
+            baibaiActive && settings.baibai?.injectHistory !== false ? row({ icon: 'slider', label: '历史长度', hint: '压缩历史最多带多少字进提示词' },
+                slider(200, 4000, 100, Number(settings.baibai?.historyBudget) || 1200, v => Math.round(v) + ' 字', value => {
+                    patchSettings('baibai.historyBudget', Math.round(value));
+                })) : null,
+            baibaiActive ? row({ icon: 'eye', label: '看看柏宝书记了什么', hint: '条目数、覆盖是否完整' },
+                h('button', { class: 'mp-btn small', type: 'button', text: '查看', onclick: () => showBaiBaiStats() })) : null,
+            !baibaiActive ? row({ icon: 'refresh', label: '自动总结', hint: '每攒够 N 层就悄悄总结一次' },
+                toggle(settings.memory?.auto === true, value => { patchSettings('memory.auto', value); render(); })) : null,
+            !baibaiActive && settings.memory?.auto === true ? row({ icon: 'hash', label: '每几层总结', hint: '默认 20 层一次' },
                 slider(4, 60, 1, Number(settings.memory?.every) || 20, v => Math.round(v) + ' 层', value => {
                     patchSettings('memory.every', Math.round(value));
                 })) : null,
-            row({ icon: 'book', label: '每次总结几层', hint: '0 = 自动：读酒馆的上下文窗口，算出隐藏助手实际能看到几层；填数字则固定' },
+            !baibaiActive ? row({ icon: 'book', label: '每次总结几层', hint: '0 = 自动：读酒馆的上下文窗口，算出隐藏助手实际能看到几层；填数字则固定' },
                 slider(0, 80, 1, Number(settings.memory?.window) || 0, v => (Number(v) ? Math.round(v) + ' 层' : '自动（约 ' + autoWindow() + ' 层）'), value => {
                     patchSettings('memory.window', Math.round(value));
-                })),
-            row({ icon: 'book', label: '注入长期记忆', hint: '把总结出来的记忆放进正文注入，AI 会一直记得' },
+                })) : null,
+            row({ icon: 'book', label: '注入长期记忆', hint: baibaiActive ? '把柏宝书的记忆放进正文注入（手机的旧条目只做兜底）' : '把总结出来的记忆放进正文注入，AI 会一直记得' },
                 toggle(settings.memory?.inject !== false, value => { patchSettings('memory.inject', value); render(); })),
-            row({ icon: 'slider', label: '注入条数', hint: '每次带几条记忆进正文' },
+            !baibaiActive ? row({ icon: 'slider', label: '注入条数', hint: '每次带几条记忆进正文' },
                 slider(1, 8, 1, Number(settings.memory?.limit) || 4, v => String(Math.round(v)), value => {
                     patchSettings('memory.limit', Math.round(value));
-                })),
+                })) : null,
         ]));
 
         /* ---------------- 数据 ---------------- */
@@ -505,20 +531,37 @@ export function mountSettings(host, { nav }) {
         render();
     }
 
-    /** 二创：从 magpie 拉一遍模型列表，点哪个填哪个。 */
+    /**
+     * 二创：从 magpie 拉一遍模型列表，点哪个存哪个。
+     * 拉到的列表会写进设置缓存（ai.magpie.models），断网/下次打开也能直接选。
+     */
     async function pickMagpieModel() {
         const current = getSettings().ai?.magpie || {};
         if (!current.baseUrl) { toast('先把 magpie 地址填上'); return; }
-        const loading = sheet({ title: '正在读取模型…', content: h('div', { class: 'mp-sheet-body' }, h('div', { class: 'mp-st-hint', text: '正在问 magpie 有哪些模型' })) });
+        const cached = Array.isArray(current.models) ? current.models : [];
+        // 有缓存先给出来，同时后台再刷新一次——不用干等
+        const loading = sheet({
+            title: '正在读取模型…',
+            content: h('div', { class: 'mp-sheet-body' }, h('div', { class: 'mp-st-hint', text: '正在问 magpie 有哪些模型' })),
+        });
         let list = [];
+        let fresh = false;
         try {
             list = await magpieListModels();
+            fresh = true;
+            // 存下来：下次直接读缓存
+            patchMagpie({ models: list, modelsAt: Date.now() });
         } catch (error) {
             loading?.close?.();
-            sheet({
-                title: '读不到模型列表',
-                content: h('div', { class: 'mp-sheet-body' }, h('pre', { class: 'mp-pre', text: explainError(0, error?.message || error) })),
-            });
+            if (cached.length) {
+                toast('联网失败，用上次拉到的 ' + cached.length + ' 个');
+                showModelPicker(cached, current, { stale: true, reason: explainError(0, error?.message || error) });
+            } else {
+                sheet({
+                    title: '读不到模型列表',
+                    content: h('div', { class: 'mp-sheet-body' }, h('pre', { class: 'mp-pre', text: explainError(0, error?.message || error) })),
+                });
+            }
             return;
         }
         loading?.close?.();
@@ -526,21 +569,87 @@ export function mountSettings(host, { nav }) {
             toast('magpie 没返回模型');
             return;
         }
+        showModelPicker(list, getSettings().ai?.magpie || {}, { fresh });
+    }
+
+    /** 模型选择弹层：点一个就存进设置。 */
+    function showModelPicker(list, current, { stale = false, fresh = false, reason = '' } = {}) {
         const box = h('div', { class: 'mp-sheet-body' });
-        for (const item of list) {
-            box.appendChild(h('button', {
-                class: 'mp-btn small' + (current.model === item.id ? ' is-on' : ''),
-                type: 'button',
-                text: item.id,
-                title: item.label,
-                style: { display: 'block', width: '100%', textAlign: 'left', marginBottom: '6px' },
-                onclick: () => {
-                    patchMagpie({ model: item.id });
-                    toast('已选 ' + item.id);
-                },
-            }));
+        const search = h('input', {
+            class: 'mp-input', type: 'text', placeholder: '搜模型名，例如 flash / deepseek',
+        });
+        const count = h('div', { class: 'mp-st-hint', text: '' });
+        const rows = h('div', {});
+
+        function paint(keyword) {
+            const key = String(keyword || '').trim().toLowerCase();
+            const matched = key
+                ? list.filter(item => (item.id + ' ' + (item.label || '')).toLowerCase().includes(key))
+                : list;
+            rows.innerHTML = '';
+            count.textContent = matched.length + ' / ' + list.length + ' 个模型';
+            for (const item of matched) {
+                const active = current.model === item.id;
+                rows.appendChild(h('button', {
+                    class: 'mp-btn small' + (active ? ' primary' : ''),
+                    type: 'button',
+                    text: item.id,
+                    title: item.label || item.id,
+                    style: { display: 'block', width: '100%', textAlign: 'left', marginBottom: '6px' },
+                    onclick: () => {
+                        patchMagpie({ model: item.id });
+                        toast('已保存 ' + item.id);
+                    },
+                }));
+            }
+            if (!matched.length) rows.appendChild(h('div', { class: 'mp-st-hint', text: '没有匹配的模型' }));
         }
-        sheet({ title: 'magpie 模型（' + list.length + '）', content: box });
+
+        search.addEventListener('input', () => paint(search.value));
+        box.append(search, count, rows);
+        if (stale) box.appendChild(h('pre', { class: 'mp-pre', text: '这是上次拉到的缓存。联网失败原因：\n' + reason }));
+        paint('');
+        sheet({
+            title: 'magpie 模型（' + list.length + '）' + (fresh ? '' : ' · 缓存'),
+            content: box,
+            height: '70vh',
+        });
+    }
+
+    /** 二创：看看柏宝书当前记了什么。 */
+    function showBaiBaiStats() {
+        const info = baiBaiInfo();
+        const stats = baiBaiStats();
+        const body = h('div', { class: 'mp-sheet-body' });
+        if (!info.available) {
+            body.appendChild(h('pre', { class: 'mp-pre', text: '没检测到柏宝书。\n\n装上 ST-BaiBai-Book 并刷新酒馆后，这里会自动接上。' }));
+            sheet({ title: '柏宝书', content: body });
+            return;
+        }
+        if (!stats) {
+            body.appendChild(h('pre', { class: 'mp-pre', text: '柏宝书在跑，但当前聊天还读不到快照。\n\n可能这个聊天还没生成任何摘要——先聊几句。' }));
+            sheet({ title: '柏宝书 v' + info.pluginVersion, content: body });
+            return;
+        }
+        const lines = [
+            '插件版本：v' + info.pluginVersion + '（接口 v' + info.apiVersion + '）',
+            '聊天楼层：' + stats.floors,
+            '摘要修订：r' + stats.revision,
+            '压缩历史节点：' + stats.historyNodes,
+            '人物：' + stats.npcs + '　物品：' + stats.items + '　在办：' + stats.plans,
+            '生活细节：' + stats.lifeDetails,
+            '',
+            stats.complete
+                ? '覆盖：完整'
+                : '覆盖：不完整，缺 ' + stats.missing.slice(0, 8).join('、') + (stats.missing.length > 8 ? ' 等 ' + stats.missing.length + ' 层' : ' 层'),
+        ];
+        body.appendChild(h('pre', { class: 'mp-pre', text: lines.join('\n') }));
+        const preview = baiBaiMemoryBlock();
+        if (preview) {
+            body.appendChild(h('div', { class: 'mp-section__title', text: '实际注入的内容' }));
+            body.appendChild(h('pre', { class: 'mp-pre', text: preview }));
+        }
+        sheet({ title: '柏宝书 v' + info.pluginVersion, content: body });
     }
 
     /** 二创：真的生成一次，验证整条链路。 */

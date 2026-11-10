@@ -168,3 +168,40 @@ test('magpieListModels 归一化并排序', async () => {
     assert.equal(list[0].context, 2000);
     delete globalThis.fetch;
 });
+
+test('normalizeSettings 清洗模型缓存：只留 id/label/context', async () => {
+    const { normalizeSettings } = await import('../src/state.js');
+    const settings = normalizeSettings({
+        ai: {
+            magpie: {
+                enabled: true,
+                baseUrl: 'h:1',
+                model: 'm',
+                models: [
+                    { id: 'a/b', label: 'B', context: 1000, secret: 'x', junk: [1, 2] },
+                    { id: 'c/d', context: '2000' },
+                    { noId: true },
+                    'garbage',
+                ],
+                modelsAt: '12345',
+            },
+        },
+    });
+    const models = settings.ai.magpie.models;
+    assert.equal(models.length, 2, '没有 id 的条目要丢掉');
+    assert.deepEqual(Object.keys(models[0]).sort(), ['context', 'id', 'label'], '多余字段不能进设置');
+    assert.equal(models[1].label, 'c/d', '缺 label 时回退成 id');
+    assert.equal(models[1].context, 2000, 'context 转成数字');
+    assert.equal(settings.ai.magpie.modelsAt, 12345);
+});
+
+test('normalizeSettings 模型缓存上限与非法值', async () => {
+    const { normalizeSettings } = await import('../src/state.js');
+    const many = Array.from({ length: 300 }, (_, i) => ({ id: 'm' + i, label: 'L' + i }));
+    const settings = normalizeSettings({ ai: { magpie: { enabled: true, baseUrl: 'h:1', model: 'm', models: many, modelsAt: -5 } } });
+    assert.equal(settings.ai.magpie.models.length, 200, '最多留 200 个');
+    assert.equal(settings.ai.magpie.modelsAt, 0, '负数归零');
+
+    const broken = normalizeSettings({ ai: { magpie: { enabled: true, baseUrl: 'h:1', model: 'm', models: 'not-an-array' } } });
+    assert.deepEqual(broken.ai.magpie.models, []);
+});

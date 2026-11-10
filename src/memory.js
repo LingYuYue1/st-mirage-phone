@@ -4,6 +4,24 @@
  * 但这里只管"手机这一侧"要记住什么。
  */
 import { getData, getSettings } from './store.js';
+import { baiBaiAvailable, baiBaiStats, baiBaiMemoryBlock, resetBaiBaiCache } from './baibai.js';
+
+/**
+ * 二创：柏宝书是否接管记忆。
+ * mode: detect（默认，装了就用）/ on（强制）/ off（不碰）
+ * 用 on 而柏宝书没装时，仍然退回手机自己的记忆，不至于什么都记不住。
+ */
+export function baiBaiMode() {
+    const mode = String(getSettings().baibai?.mode || 'detect');
+    if (mode === 'off') return 'off';
+    if (!baiBaiAvailable()) return 'missing';
+    return 'active';
+}
+
+/** 柏宝书接管中：手机的自动总结应该让路，不然同一段剧情会被总结两遍。 */
+export function baiBaiTakesOver() {
+    return baiBaiMode() === 'active';
+}
 
 /** 当前聊天的全部楼层（包括隐藏楼层，隐藏的也算剧情）。 */
 export function chatFloors() {
@@ -44,6 +62,8 @@ export function saveMemoryEntry(entry) {
 export function clearMemory() {
   const data = getData();
   data.memory = { entries: [], cursor: 0 };
+  // 二创：清手机记忆时顺手让柏宝书的快照缓存失效，避免读到旧的
+  try { resetBaiBaiCache(); } catch { /* ignore */ }
   return data.memory;
 }
 
@@ -115,6 +135,8 @@ export function plannedDepth(available = 0) {
 export function summarizeDue() {
   const settings = getSettings();
   if (!settings.memory?.auto) return false;
+  // 二创：柏宝书在管记忆时，手机不再自己总结——避免同一段剧情被记两遍
+  if (baiBaiTakesOver()) return false;
   const every = Math.max(2, Number(settings.memory?.every) || 20);
   const floors = chatFloors();
   const pending = floors.length - memoryCursor();
@@ -156,6 +178,23 @@ export function removeMemoryEntry(id) {
 
 /** 注入用的记忆块：新的、带人物词的优先。 */
 export function memoryBlock({ limit = 4, people = [] } = {}) {
+  const settings = getSettings();
+  // 二创：柏宝书在管记忆时，正文注入改用它已经压好的那份，
+  // 手机自己的条目不再重复塞进去（否则同一段剧情会在提示词里出现两次）。
+  if (baiBaiTakesOver()) {
+    const parts = {};
+    if (settings.baibai?.injectSnapshot === false) {
+      parts.state = false; parts.protagonist = false; parts.plans = false;
+      parts.items = false; parts.npcs = false; parts.lifeDetails = false;
+    }
+    const block = baiBaiMemoryBlock({
+      parts,
+      historyBudget: Number(settings.baibai?.historyBudget) || 1200,
+      includeHistory: settings.baibai?.injectHistory !== false,
+    });
+    // 柏宝书那边还是空的（刚装、还没攒够楼层）时，退回手机自己的条目
+    if (block) return block;
+  }
   const entries = memoryEntries();
   if (!entries.length) return '';
   const scored = entries.map(entry => {

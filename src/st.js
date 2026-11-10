@@ -6,6 +6,8 @@ export const MODULE = 'mirage_phone';
 
 // 二创：局域网 magpie 适配层（不反向 import 本文件，无循环依赖）
 import { magpieGenerate, magpieListModels as magpieListModelsRaw, magpiePing as magpiePingRaw, normalizeBase, explainError } from './magpie.js';
+// 二创：柏宝书记忆兼容（同样不反向 import）
+import { baiBaiContextItems } from './baibai.js';
 
 /**
  * 给设置界面用的包装：不传配置时自己从酒馆 extensionSettings 里读。
@@ -143,6 +145,9 @@ export function storyContext(limit = 8, each = 360) {
 /**
  * 优先从记忆里取：酒馆的记忆扩展、摘要、长期记忆、向量存储留下的文字。
  * 没有记忆扩展时返回空数组，让调用方退回聊天记录。
+ *
+ * 二创：装了柏宝书就用它的记忆（结构化现状 + 已压缩历史），
+ * 并把手机自己那套条目排在后面——不重复，但柏宝书空着时也不至于失忆。
  */
 export function memoryContext(limit = 12) {
     const c = ctx();
@@ -154,6 +159,13 @@ export function memoryContext(limit = 12) {
         seen.add(clean);
         out.push({ text: clean.slice(0, 1200), tag });
     };
+
+    // 柏宝书优先
+    try {
+        const settings = c?.extensionSettings?.mirage_phone;
+        for (const item of baiBaiContextItems(settings)) push(item.text, item.tag);
+    } catch { /* ignore */ }
+
     const walk = (value, path, depth) => {
         if (!value || depth > 3 || out.length > 80) return;
         if (typeof value === 'string') {

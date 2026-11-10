@@ -71,6 +71,9 @@ export function defaultSettings() {
             customHeaders: '', customBody: '', customPath: 'data.0.b64_json',
         },
         inject: { enabled: true, depth: 2 },
+        // 二创：柏宝书兼容。detect=自动检测；'on' 强制用它的记忆；'off' 完全不碰。
+        // 默认 detect：装了柏宝书就借用它的记忆，手机自己不再重复总结。
+        baibai: { mode: 'detect', injectHistory: true, injectSnapshot: true, historyBudget: 1200 },
         proactive: { enabled: false, cooldown: 120, perHour: 4, rounds: 1 },
         tts: {
             enabled: false, auto: false, rate: 1, pitch: 1, volume: 1, voice: '', provider: 'browser',
@@ -92,6 +95,9 @@ export function defaultSettings() {
                 reasoning: 'low',
                 temperature: 0.9,
                 proxyPath: '/api/backends/chat-completions',
+                // 拉取过的模型列表缓存下来：下次打开设置不用重新联网，断网也能选
+                models: [],
+                modelsAt: 0,
             },
         },
         replyInGroup: true,
@@ -137,6 +143,12 @@ export function normalizeSettings(raw) {
     s.proactive.cooldown = clamp(Math.round(Number(s.proactive.cooldown) || 0), 30, 3600);
     s.proactive.perHour = clamp(Math.round(Number(s.proactive.perHour) || 0), 1, 20);
     s.proactive.rounds = clamp(Math.round(Number(s.proactive.rounds) || 1), 1, 20);
+    // 二创：柏宝书兼容设置兜底
+    s.baibai = s.baibai && typeof s.baibai === 'object' ? s.baibai : {};
+    s.baibai.mode = ['detect', 'on', 'off'].includes(s.baibai.mode) ? s.baibai.mode : 'detect';
+    s.baibai.injectHistory = s.baibai.injectHistory !== false;
+    s.baibai.injectSnapshot = s.baibai.injectSnapshot !== false;
+    s.baibai.historyBudget = clamp(Math.round(Number(s.baibai.historyBudget) || 1200), 200, 4000);
     s.tts = s.tts && typeof s.tts === 'object' ? s.tts : {};
     s.tts.provider = s.tts.provider === 'openai' ? 'openai' : 'browser';
     s.tts.baseUrl = String(s.tts.baseUrl || '').slice(0, 200);
@@ -167,6 +179,18 @@ export function normalizeSettings(raw) {
     magpie.reasoning = ['none', 'low', 'high', 'max'].includes(magpie.reasoning) ? magpie.reasoning : 'low';
     magpie.temperature = Math.max(0, Math.min(2, Number(magpie.temperature) || 0.9));
     magpie.proxyPath = String(magpie.proxyPath || '/api/backends/chat-completions').slice(0, 200);
+    // 模型列表缓存：只留 id/label/context，别把整个返回体存进设置
+    magpie.models = Array.isArray(magpie.models)
+        ? magpie.models
+            .filter(item => item && typeof item === 'object' && item.id)
+            .map(item => ({
+                id: String(item.id).slice(0, 120),
+                label: String(item.label || item.id).slice(0, 80),
+                context: Math.max(0, Number(item.context) || 0),
+            }))
+            .slice(0, 200)
+        : [];
+    magpie.modelsAt = Math.max(0, Number(magpie.modelsAt) || 0);
     if (!s.installId) s.installId = uid();
     s.pos = { x: Number.isFinite(s.pos?.x) ? s.pos.x : null, y: Number.isFinite(s.pos?.y) ? s.pos.y : null };
     return s;
