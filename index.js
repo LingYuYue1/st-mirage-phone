@@ -10,6 +10,8 @@ import { ACCENTS } from './src/state.js';
 import { createPhone, openPhone, refreshTheme } from './src/phone.js';
 import { avatarUrl } from './src/avatars.js';
 import { aiEvents, runProactive, refreshInjection, isBusy, autoSummarizeMemory } from './src/ai.js';
+// 二创：论坛按剧情进度自动长帖
+import { maybeGrowForum } from './src/apps/forum.js';
 import { initDesktopBridge } from './src/desktop-bridge.js';
 
 let bootErrorTimer = 0;
@@ -48,7 +50,7 @@ window.addEventListener('unhandledrejection', event => {
     if (text) showBootError(text);
 });
 
-const VERSION = '1.8.0';
+const VERSION = '1.9.0';
 let phone = null;
 let started = false;
 let panel = null;
@@ -160,6 +162,8 @@ function wireEvents() {
         phone?.refreshBadges();
         // 每 N 层自动总结一次（设置里开启才跑）
         autoSummarizeMemory?.();
+        // 二创：论坛按剧情进度自己长帖（每 N 层一批）
+        maybeGrowForum?.().catch(() => {});
     });
 
     aiEvents.addEventListener('typing', event => {

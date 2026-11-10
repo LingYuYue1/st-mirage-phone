@@ -122,5 +122,60 @@ export function seed(data) {
         { id: 'ph2', url: photos.window, cap: '书店的蜡烛', ts: now - day },
         { id: 'ph3', url: photos.snow, cap: '窗台上的雪', ts: now - 2 * day },
     ];
+
+    // 二创新应用：终端项目清单 + 客户档案（演示用，真实数据来自世界书和 MVU）
+    data.feeds = data.feeds || {};
+    data.feeds.terminal = {
+        at: now,
+        projects: [
+            { id: 'pj-0', category: 'wash', name: '风尘洗白', desc: '抹去过往痕迹，重新建立干净的社交关系与生活轨迹', price: '4 万', duration: '约 3 个月', tier: '标准' },
+            { id: 'pj-1', category: 'wash', name: '身份重置', desc: '连同证件、履历、旧关系一并清理，换一个能见光的新身份', price: '12 万', duration: '约 6 个月', tier: '深度' },
+            { id: 'pj-2', category: 'train', name: '基础礼仪', desc: '说话、坐姿、餐桌、眼神，先让外在不出错', price: '8000', duration: '每周两次', tier: '入门' },
+            { id: 'pj-3', category: 'train', name: '服从训练', desc: '建立指令与回应的条件反射，逐步降低抵触', price: '2.4 万', duration: '一个月', tier: '进阶' },
+            { id: 'pj-4', category: 'fall', name: '渐进恶堕', desc: '从微小让步开始，让她自己走到无法回头的位置', price: '面议', duration: '视对象而定', tier: '' },
+            { id: 'pj-5', category: 'vip', name: '白金会员', desc: '优先排期、专属档案、每月一次不限项目', price: '30 万/年', duration: '12 个月', tier: 'PLATINUM' },
+            { id: 'pj-6', category: 'vip', name: '黑卡', desc: '不限项目与次数，含紧急调度与善后', price: '面议', duration: '长期', tier: 'BLACK' },
+            { id: 'pj-7', category: 'extra', name: '破壁', desc: '针对已有身份与关系的人，处理最难的那层', price: '6 万起', duration: '约 2 个月', tier: '' },
+        ],
+        orders: [
+            { id: 'od-1', name: '基础礼仪', target: '沈知微', price: '8000', ts: now - 3 * hour },
+            { id: 'od-2', name: '风尘洗白', target: '夏之', price: '4 万', ts: now - day },
+        ],
+    };
+
+    data.feeds.clientFiles = {
+        people: {
+            '林美雪': {
+                name: '林美雪', role: '当前目标', path: '目标角色.基础信息',
+                counts: [
+                    { key: '口交次数', path: '', value: '3' },
+                    { key: '性交次数', path: '', value: '7' },
+                    { key: '乳交次数', path: '', value: '2' },
+                ],
+                progress: [{ key: '业务进度', path: '', value: '42', percent: 42 }],
+                lists: [
+                    { key: '敏感点位', path: '', value: '后颈、耳后、腰侧' },
+                    { key: '额外性癖', path: '', value: '怕痒、喜欢被命令' },
+                ],
+                others: [
+                    { key: '性格特征', path: '', value: '清纯甜美，内心渴望回归正常生活，初期比较害羞。' },
+                    { key: '业务要求', path: '', value: '彻底洗去风尘气息，成为能够正常恋爱结婚的良家妇女。' },
+                ],
+                firstSeen: now - 12 * day, updatedAt: now - hour, visits: 8,
+            },
+            '张总': {
+                name: '张总', role: '委托方', path: '委托方信息.张总',
+                counts: [], progress: [],
+                lists: [],
+                others: [
+                    { key: '性别', path: '', value: '男' },
+                    { key: '与目标关系', path: '', value: '上司' },
+                    { key: '特殊要求', path: '', value: '不希望留下任何书面记录。' },
+                ],
+                firstSeen: now - 12 * day, updatedAt: now - day, visits: 3,
+            },
+        },
+    };
+
     return data;
 }

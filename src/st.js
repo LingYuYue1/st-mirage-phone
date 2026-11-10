@@ -514,6 +514,7 @@ export async function generateText({ system = '', prompt = '', length = 320, jso
 export function worldBookText(limit = 1400) {
     try {
         const c = ctx();
+        // 优先用酒馆已经拼好的那份（它已经按关键词/常驻规则筛过，最贴近正文实际看到的）
         const fromContext = String(c?.worldInfoString || '').trim();
         if (fromContext) return fromContext.slice(0, limit);
         const character = c?.characters?.[c?.characterId];
@@ -527,6 +528,127 @@ export function worldBookText(limit = 1400) {
     } catch {
         return '';
     }
+}
+
+/**
+ * 二创：世界书的「全量」视图，异步读，不截断到一条。
+ * worldBookText() 只看 worldInfoString（可能为空）和卡内嵌那一本；
+ * 这里把卡内嵌 + 绑定的那本 + 聊天绑定的一起收齐，并保留条目标题，
+ * 给「终端 / 论坛 / 客户档案」这类需要完整设定的应用用。
+ *
+ * 关键：`ctx.characters` 在用户没点开角色列表时是空的（酒馆懒加载），
+ * 所以这里在本地取不到时，会用 /api/characters/all 兜底，否则手机读不到世界书。
+ *
+ * 返回 [{ title, content, keys, constant, order }]，按 insertion_order 排。
+ */
+let worldCache = { at: 0, key: '', items: [] };
+const WORLD_TTL = 8000;
+
+/** 当前角色卡数据：先看 context，拿不到就问接口。 */
+async function currentCardData() {
+    const c = ctx();
+    try {
+        const local = c?.characters?.[c?.characterId];
+        if (local?.data) return local;
+        if (local) return local;
+    } catch { /* 继续走接口 */ }
+
+    // 兜底：直接问酒馆要当前角色
+    try {
+        const headers = { 'Content-Type': 'application/json', ...requestHeaders() };
+        const response = await fetch('/api/characters/all', { method: 'POST', headers, body: '{}' });
+        if (!response.ok) return null;
+        const list = await response.json();
+        if (!Array.isArray(list)) return null;
+        const chatChar = String(c?.name2 || c?.character?.name || '').trim();
+        if (chatChar) {
+            const matched = list.find(item => String(item?.name || '') === chatChar);
+            if (matched) return matched;
+        }
+        // 没在聊天里就退第一个非 {{user}} 的
+        return list.find(item => item && item.name && item.name !== '{{user}}') || null;
+    } catch {
+        return null;
+    }
+}
+
+export async function worldBookFull({ force = false } = {}) {
+    const c = ctx();
+    let key = '';
+    try {
+        key = [c?.characterId, c?.name2, c?.chatId, c?.chatMetadata?.world_info || c?.chatMetadata?.worldInfo || ''].join('|');
+    } catch { /* ignore */ }
+    if (!force && worldCache.key === key && Date.now() - worldCache.at < WORLD_TTL && worldCache.items.length) {
+        return worldCache.items;
+    }
+
+    const out = [];
+    const seen = new Set();
+    const push = entry => {
+        if (!entry || entry.disable) return;
+        const content = String(entry.content || '').trim();
+        if (!content) return;
+        const dedupe = content.slice(0, 60);
+        if (seen.has(dedupe)) return;
+        seen.add(dedupe);
+        const keys = Array.isArray(entry.key) ? entry.key : (Array.isArray(entry.keys) ? entry.keys : []);
+        out.push({
+            title: String(entry.comment || keys[0] || '条目').slice(0, 60),
+            content: content.slice(0, 4000),
+            keys: keys.map(item => String(item).slice(0, 40)).slice(0, 12),
+            constant: !!entry.constant,
+            order: Number(entry.insertion_order) || 0,
+        });
+    };
+
+    // 1) 卡内嵌
+    const card = await currentCardData();
+    try {
+        const book = card?.data?.character_book || card?.character_book;
+        for (const entry of book?.entries || []) push(entry);
+    } catch { /* ignore */ }
+
+    // 2) 绑定的世界书（卡上挂的 + 聊天里选的）
+    const names = new Set();
+    try {
+        const bound = card?.data?.extensions?.world || card?.extensions?.world;
+        if (bound) names.add(String(bound));
+        const chatWorld = c?.chatMetadata?.world_info || c?.chatMetadata?.worldInfo;
+        if (chatWorld && typeof chatWorld === 'string') names.add(chatWorld);
+        // 酒馆 1.15 的 world_info 可能是对象 { global: [...], character: [...], chat: [...] }
+        if (chatWorld && typeof chatWorld === 'object') {
+            for (const list of Object.values(chatWorld)) {
+                if (Array.isArray(list)) for (const name of list) names.add(String(name));
+            }
+        }
+    } catch { /* ignore */ }
+    for (const name of names) {
+        try {
+            const response = await fetch('/api/worldinfo/get', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...requestHeaders() },
+                body: JSON.stringify({ name }),
+            });
+            if (!response.ok) continue;
+            const json = await response.json();
+            for (const entry of Object.values(json?.entries || {})) push(entry);
+        } catch { /* ignore */ }
+    }
+
+    out.sort((a, b) => b.order - a.order);
+    worldCache = { at: Date.now(), key, items: out };
+    return out;
+}
+
+/** 世界书拼成一段纯文本（带条目标题），给内部提示词用。 */
+export async function worldBookBlock({ limit = 3000, entries = 40 } = {}) {
+    const list = await worldBookFull();
+    if (!list.length) return '';
+    const text = list
+        .slice(0, entries)
+        .map(entry => '【' + entry.title + '】\n' + entry.content)
+        .join('\n\n');
+    return text.slice(0, limit);
 }
 
 /** 手机里点「带进剧情」时，把一段话交给下一次正文。 */

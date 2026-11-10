@@ -45,6 +45,11 @@ import { mountDeepSeek, mountChatGPT, mountClaude, mountGemini } from './apps/ai
 import { mountShop } from './apps/shopping.js';
 import { mountWebApp } from './apps/webapps.js';
 import { mountCalendar, mountLive, mountDouban, mountXianyu, mountTravel } from './apps/daily.js';
+// 二创新增应用
+import { mountWeChat } from './apps/wechat.js';
+import { mountForum } from './apps/forum.js';
+import { mountTerminal } from './apps/terminal.js';
+import { mountClientFiles } from './apps/clientfiles.js';
 
 const APPS = {
     chat: { mount: mountChat },
@@ -102,6 +107,11 @@ const APPS = {
     douban: { mount: mountDouban },
     xianyu: { mount: mountXianyu },
     travel: { mount: mountTravel },
+    // ---- 二创新增 ----
+    wechat: { mount: mountWeChat },
+    forum: { mount: mountForum },
+    terminal: { mount: mountTerminal },
+    clientfiles: { mount: mountClientFiles },
 };
 
 let rootEl = null;

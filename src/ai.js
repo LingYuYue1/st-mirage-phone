@@ -2,7 +2,7 @@
  * AI 编排：手机里的回复、朋友圈、评论、主动来信、正文注入。
  * 全部走酒馆当前连接，用 generateRaw 在后台生成，不写进正文。
  */
-import { generateText, storyContext, importantStoryContext, memoryContext, userName, findCharacter, worldBookText, setPhonePrompt, currentCharacter } from './st.js';
+import { generateText, storyContext, importantStoryContext, memoryContext, userName, findCharacter, worldBookText, worldBookBlock, setPhonePrompt, currentCharacter } from './st.js';
 import {
     getSettings, getData, findThread, appendMessages, ensureThread, addMoment, addNote, saveNow,
     getCast, setCast, findPerson, setFeed, getFeed, getSelfProfile,
@@ -22,6 +22,7 @@ import {
 import { plotSystemPrompt, plotUserPrompt, plotFallback, toneOf } from './plot.js';
 import { sparkSystemPrompt, sparkUserPrompt, sparkFallback, dateSystemPrompt, dateFallback } from './spark.js';
 import { webSystemPrompt, webUserPrompt, webFallback } from './web.js';
+import { flatVariables, varsToText } from './mvu.js';
 
 const busy = new Set();
 
@@ -88,6 +89,12 @@ export async function replyToThread(threadId, { proactive = false } = {}) {
         const card = findCharacter(worldCard?.name) || worldCard;
         const person = findPerson(members[0]);
         let system = chatSystemPrompt({ thread, person, world, card, settings, user, story, memory, reply: !proactive });
+        // 二创：把世界书接进来。手机原来只吃角色卡的 scenario/description，
+        // 卡绑定的那本世界书（机构、规矩、名册、玩法）完全看不到。
+        if (settings.worldbook?.inject !== false) {
+            const book = await worldBookBlock({ limit: Number(settings.worldbook?.limit) || 2200, entries: 30 });
+            if (book) system += '\n\n【世界书设定（必须遵守，不能与之矛盾）】\n' + book;
+        }
         if (members.length > 1) {
             const blocks = [];
             for (const name of members.slice(0, 4)) {
@@ -405,6 +412,29 @@ export function refreshInjection() {
 export function previewInjection() {
     const data = getData();
     return phoneStateSummary({ threads: data.threads, user: userName(), hearts: relevantHearts(data), extras: recentOtherChats(), power: powerRoster({ selfProfile: getSelfProfile() }) });
+}
+
+/** 二创：预览「世界书 + MVU 变量」这两块额外喂给模型的内容，方便排查。 */
+export async function previewWorldContext() {
+    const settings = getSettings();
+    const lines = [];
+    if (settings.worldbook?.inject !== false) {
+        const book = await worldBookBlock({ limit: Number(settings.worldbook?.limit) || 2200, entries: 30 });
+        lines.push('【世界书】' + (book ? '已接入（' + book.length + ' 字）' : '没有读到世界书'));
+        if (book) lines.push(book);
+    } else {
+        lines.push('【世界书】已关闭');
+    }
+    if (settings.mvu?.inject !== false) {
+        const { source, vars } = flatVariables();
+        const text = varsToText(vars, { maxLines: 40, maxChars: 1200 });
+        lines.push('\n【MVU 变量】来源：' + source);
+        if (text) lines.push(text);
+        else lines.push('（没有读到变量）');
+    } else {
+        lines.push('\n【MVU 变量】已关闭');
+    }
+    return lines.join('\n');
 }
 
 /**

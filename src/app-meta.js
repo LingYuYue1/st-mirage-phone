@@ -74,6 +74,27 @@ export const STORE_APPS = [
     },
     { id: 'tieba', name: '百度贴吧', sub: 'Tieba', label: '贴吧', icon: 'tieba', cls: 'g-tieba', category: '社区', size: '86 MB', rating: '4.4', color: '#3385ff', accent: '#5aa0ff', desc: '旧城的人都在这里发帖' },
     { id: 'calendar', name: '日历', sub: 'Calendar', label: '日历', icon: 'calendar', cls: 'g-calendar', category: '工具', size: '42 MB', rating: '4.6', color: '#8f2f2f', accent: '#ff8a7a', desc: '从正文里提取日程和约会' },
+    // ---- 二创新增 ----
+    {
+        id: 'wechat', name: '微信', sub: 'WeChat', label: '微信', icon: 'message', cls: 'g-wechat',
+        category: '社交', size: '186 MB', rating: '4.8', color: '#0f2e1a', accent: '#07c160',
+        desc: '私聊、群聊、朋友圈，一整部微信',
+    },
+    {
+        id: 'forum', name: '论坛', sub: 'BBS', label: '论坛', icon: 'hash', cls: 'g-forum',
+        category: '社区', size: '74 MB', rating: '4.5', color: '#1a2330', accent: '#f0a35e',
+        desc: '按这个世界长出来的地下论坛，剧情推进就自己长帖',
+    },
+    {
+        id: 'terminal', name: '终端', sub: 'Terminal', label: '终端', icon: 'grid', cls: 'g-terminal',
+        category: '工具', size: '38 MB', rating: '4.7', color: '#12262b', accent: '#4fc3a1',
+        desc: '读世界书，把项目平铺成可点的清单',
+    },
+    {
+        id: 'clientfiles', name: '客户档案', sub: 'Files', label: '档案', icon: 'contacts', cls: 'g-clientfiles',
+        category: '工具', size: '26 MB', rating: '4.6', color: '#2a1f30', accent: '#c05f8a',
+        desc: '读 MVU 变量，记录每位客户的次数与偏好',
+    },
     { id: 'live', name: '直播', sub: 'Live', label: '直播', icon: 'live', cls: 'g-live', category: '视频', size: '168 MB', rating: '4.5', color: '#5a1f5f', accent: '#ff5ca8', desc: '角色开播，弹幕和正文连着' },
     { id: 'douban', name: '豆瓣', sub: 'Douban', label: '豆瓣', icon: 'douban', cls: 'g-douban', category: '阅读', size: '76 MB', rating: '4.7', color: '#1f4a2e', accent: '#6fcf8a', desc: '角色给书影音打分写短评' },
     { id: 'xianyu', name: '闲鱼', sub: 'Second Hand', label: '闲鱼', icon: 'xianyu', cls: 'g-xianyu', category: '购物', size: '96 MB', rating: '4.5', color: '#8a6a10', accent: '#ffd65c', desc: '角色卖旧物，能顺着找上门' },

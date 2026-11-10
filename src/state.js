@@ -71,6 +71,12 @@ export function defaultSettings() {
             customHeaders: '', customBody: '', customPath: 'data.0.b64_json',
         },
         inject: { enabled: true, depth: 2 },
+        // 二创：世界书与 MVU 变量。手机原来只吃角色卡 scenario/description，
+        // 卡绑定的世界书（机构、规矩、名册）和 MVU 变量（当前对象、进度、敏感点）都看不到。
+        worldbook: { inject: true, limit: 2200, inApps: true },
+        mvu: { inject: true, limit: 1200 },
+        // 二创：论坛按剧情进度自动长帖
+        forum: { auto: true, every: 3 },
         // 二创：柏宝书兼容。detect=自动检测；'on' 强制用它的记忆；'off' 完全不碰。
         // 默认 detect：装了柏宝书就借用它的记忆，手机自己不再重复总结。
         baibai: { mode: 'detect', injectHistory: true, injectSnapshot: true, historyBudget: 1200 },
@@ -149,6 +155,18 @@ export function normalizeSettings(raw) {
     s.baibai.injectHistory = s.baibai.injectHistory !== false;
     s.baibai.injectSnapshot = s.baibai.injectSnapshot !== false;
     s.baibai.historyBudget = clamp(Math.round(Number(s.baibai.historyBudget) || 1200), 200, 4000);
+    // 二创：世界书 / MVU 设置兜底
+    s.worldbook = s.worldbook && typeof s.worldbook === 'object' ? s.worldbook : {};
+    s.worldbook.inject = s.worldbook.inject !== false;
+    s.worldbook.inApps = s.worldbook.inApps !== false;
+    s.worldbook.limit = clamp(Math.round(Number(s.worldbook.limit) || 2200), 300, 8000);
+    s.mvu = s.mvu && typeof s.mvu === 'object' ? s.mvu : {};
+    s.mvu.inject = s.mvu.inject !== false;
+    s.mvu.limit = clamp(Math.round(Number(s.mvu.limit) || 1200), 200, 4000);
+    // 二创：论坛设置兜底
+    s.forum = s.forum && typeof s.forum === 'object' ? s.forum : {};
+    s.forum.auto = s.forum.auto !== false;
+    s.forum.every = clamp(Math.round(Number(s.forum.every) || 3), 1, 20);
     s.tts = s.tts && typeof s.tts === 'object' ? s.tts : {};
     s.tts.provider = s.tts.provider === 'openai' ? 'openai' : 'browser';
     s.tts.baseUrl = String(s.tts.baseUrl || '').slice(0, 200);

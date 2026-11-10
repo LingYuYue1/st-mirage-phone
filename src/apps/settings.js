@@ -5,7 +5,7 @@ import { h, icon, sheet, confirmSheet, toast } from '../render.js';
 import { getSettings, getData, patchSettings, replaceData, resetData, saveNow } from '../store.js';
 import { ACCENTS, WALLPAPERS, DEFAULT_STYLE } from '../state.js';
 import { storeImage } from '../images.js';
-import { previewInjection } from '../ai.js';
+import { previewInjection, previewWorldContext } from '../ai.js';
 import { isNarrow, magpieListModels, magpiePing, normalizeBase, explainError } from '../st.js';
 import { baiBaiInfo, baiBaiStats, baiBaiMemoryBlock } from '../baibai.js';
 import { generateImage } from '../imagegen.js';
@@ -218,6 +218,44 @@ export function mountSettings(host, { nav }) {
                         sheet({ title: '注入正文的内容', content: h('div', { class: 'mp-sheet-body' }, h('pre', { class: 'mp-pre', text: text || '现在还没有可以注入的消息。' })) });
                     },
                 })),
+            row({ icon: 'eye', label: '看看世界书和变量' },
+                h('button', {
+                    class: 'mp-btn small', type: 'button', text: '预览',
+                    onclick: async () => {
+                        const loading = sheet({ title: '正在读取…', content: h('div', { class: 'mp-sheet-body' }, h('div', { class: 'mp-st-hint', text: '正在读世界书和 MVU 变量' })) });
+                        try {
+                            const text = await previewWorldContext();
+                            loading?.close?.();
+                            sheet({ title: '世界书 + MVU 变量', content: h('div', { class: 'mp-sheet-body' }, h('pre', { class: 'mp-pre', text: text || '（空）' })) });
+                        } catch (error) {
+                            loading?.close?.();
+                            toast(String(error?.message || '读取失败'), 3000);
+                        }
+                    },
+                })),
+        ]));
+
+        /* ---------------- 世界书与变量（二创） ---------------- */
+        const worldStats = settings.worldbook?.inject !== false;
+        wrap.appendChild(section('世界书与变量', [
+            row({ icon: 'book', label: '让手机读世界书', hint: '角色卡挂的世界书（机构、规矩、名册、玩法）会进手机的提示词。关掉的话手机只知道角色卡的简介。' },
+                toggle(worldStats, value => { patchSettings('worldbook.inject', value); render(); })),
+            worldStats ? row({ icon: 'slider', label: '世界书长度', hint: '每次最多带多少字进提示词' },
+                slider(300, 8000, 100, Number(settings.worldbook?.limit) || 2200, v => Math.round(v) + ' 字', value => {
+                    patchSettings('worldbook.limit', Math.round(value));
+                })) : null,
+            row({ icon: 'hash', label: '读 MVU 变量', hint: 'MVU 变量（当前对象、进度、次数）会进手机的提示词。装了 MVU 框架才有效。' },
+                toggle(settings.mvu?.inject !== false, value => { patchSettings('mvu.inject', value); render(); })),
+            settings.mvu?.inject !== false ? row({ icon: 'slider', label: '变量长度', hint: '每次最多带多少字进提示词' },
+                slider(200, 4000, 100, Number(settings.mvu?.limit) || 1200, v => Math.round(v) + ' 字', value => {
+                    patchSettings('mvu.limit', Math.round(value));
+                })) : null,
+            row({ icon: 'hash', label: '论坛自动长帖', hint: '每推进 N 层剧情就自动长一批新帖' },
+                toggle(settings.forum?.auto !== false, value => { patchSettings('forum.auto', value); render(); })),
+            settings.forum?.auto !== false ? row({ icon: 'slider', label: '每几层长一批', hint: '默认 3 层' },
+                slider(1, 20, 1, Number(settings.forum?.every) || 3, v => Math.round(v) + ' 层', value => {
+                    patchSettings('forum.every', Math.round(value));
+                })) : null,
         ]));
 
         /* ---------------- 手机 AI 接口 ---------------- */
