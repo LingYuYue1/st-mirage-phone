@@ -5,3 +5,6 @@ desktop/www/
 *.zip
 *.exe
 *.log
+
+.chrome-shot/
+shots/

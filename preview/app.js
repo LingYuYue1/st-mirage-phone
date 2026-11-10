@@ -45,6 +45,18 @@ if (query.get('folder') === '1') {
 if (query.get('accent') && ACCENTS[query.get('accent')]) settings.accent = query.get('accent');
 if (query.get('wallpaper')) settings.wallpaper = query.get('wallpaper');
 if (query.get('scale')) settings.scale = Number(query.get('scale')) || 1;
+// ?magpie=1 打开 magpie 网关那一节的完整表单，方便截图和手动试
+if (query.get('magpie') === '1') {
+    settings.ai.magpie = {
+        enabled: true,
+        mode: query.get('magpiemode') || 'proxy',
+        baseUrl: query.get('magpieurl') || 'http://192.168.101.13:3425',
+        apiKey: 'sk-magpie-key-…',
+        model: query.get('magpiemodel') || 'trae-cn/deepseek-v4.1-flash-max',
+        reasoning: 'low',
+        temperature: 0.9,
+    };
+}
 saveNow('settings');
 
 if (query.get('demo') !== '0') seed(getData());

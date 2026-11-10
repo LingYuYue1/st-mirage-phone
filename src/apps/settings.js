@@ -6,7 +6,7 @@ import { getSettings, getData, patchSettings, replaceData, resetData, saveNow } 
 import { ACCENTS, WALLPAPERS, DEFAULT_STYLE } from '../state.js';
 import { storeImage } from '../images.js';
 import { previewInjection } from '../ai.js';
-import { isNarrow } from '../st.js';
+import { isNarrow, magpieListModels, magpiePing, normalizeBase, explainError } from '../st.js';
 import { generateImage } from '../imagegen.js';
 import { ttsVoices, ttsVoiceList, ttsSupported, speak } from '../tts.js';
 import { autoWindow } from '../memory.js';
@@ -220,7 +220,9 @@ export function mountSettings(host, { nav }) {
         ]));
 
         /* ---------------- 手机 AI 接口 ---------------- */
+        const magpieOn = settings.ai?.magpie?.enabled === true;
         wrap.appendChild(section('手机 AI 接口', [
+            magpieOn ? helpRow('当前走的是 magpie', '下面这些「跟随酒馆主 API / 独立接口」暂时不生效——magpie 网关开着的时候，手机的每一次生成都走 magpie。要改回酒馆主 API，先把「局域网 magpie」的开关关掉。') : null,
             row({ icon: 'sparkle', label: '跟随酒馆主 API', hint: '关掉后手机用下面这套接口，正文仍然走酒馆' },
                 toggle(settings.ai?.useMain !== false, value => patchAI({ useMain: value }))),
             settings.ai?.useMain === false ? row({ icon: 'globe', label: '接口地址', hint: 'OpenAI 兼容，例如 https://api.deepseek.com/v1' },
@@ -238,6 +240,46 @@ export function mountSettings(host, { nav }) {
                     type: 'text', value: settings.ai?.model || '', placeholder: 'deepseek-chat',
                     onchange: event => patchAI({ model: event.target.value.trim() }),
                 }))) : null,
+        ]));
+
+        /* ---------------- 局域网 magpie（二创） ---------------- */
+        const magpie = settings.ai?.magpie || {};
+        wrap.appendChild(section('局域网 magpie', [
+            row({ icon: 'wifi', label: '启用 magpie 网关', hint: '打开后手机所有生成都走家里的 magpie，正文仍然按酒馆自己的连接' },
+                toggle(magpie.enabled === true, value => { patchMagpie({ enabled: value }); })),
+            magpie.enabled !== true ? helpRow('怎么用', '先在 magpie 里打开局域网访问并复制 gateway key，然后把地址（例如 http://192.168.1.20:3425）和 key 填进来。默认「经酒馆转发」不需要在 magpie 里登记网页来源。') : null,
+            magpie.enabled === true ? row({ icon: 'link', label: '连接方式', hint: '经酒馆转发：浏览器→酒馆→magpie，绕开网页来源白名单（推荐）；直连：浏览器直接打 magpie，需要先登记来源' },
+                choices([['proxy', '经酒馆转发'], ['direct', '浏览器直连']], magpie.mode || 'proxy', value => patchMagpie({ mode: value }))) : null,
+            magpie.enabled === true ? row({ icon: 'globe', label: 'magpie 地址', hint: '填到端口即可，例如 http://192.168.1.20:3425；会自动补 /v1' },
+                h('div', { class: 'mp-field' }, h('input', {
+                    type: 'text', value: magpie.baseUrl || '', placeholder: 'http://192.168.1.20:3425',
+                    onchange: event => patchMagpie({ baseUrl: event.target.value.trim() }),
+                }))) : null,
+            magpie.enabled === true ? row({ icon: 'key', label: 'Gateway Key', hint: 'magpie 的 Settings → Network and sharing 里复制，形如 sk-magpie-key-…' },
+                h('div', { class: 'mp-field' }, h('input', {
+                    type: 'password', value: magpie.apiKey || '', placeholder: 'sk-magpie-key-…',
+                    onchange: event => patchMagpie({ apiKey: event.target.value.trim() }),
+                }))) : null,
+            magpie.enabled === true ? row({ icon: 'grid', label: '模型', hint: '填 magpie 的模型 id，例如 trae-cn/deepseek-v4.1-flash-max；也可以点下面的「拉取模型」挑' },
+                h('div', { class: 'mp-field' }, h('input', {
+                    type: 'text', value: magpie.model || '', placeholder: 'trae-cn/deepseek-v4.1-flash-max',
+                    onchange: event => patchMagpie({ model: event.target.value.trim() }),
+                }))) : null,
+            magpie.enabled === true ? row({ icon: 'download', label: '拉取模型列表', hint: '从 magpie 读一遍可用模型，点一下就填进上面的模型框' },
+                h('button', {
+                    class: 'mp-btn small', type: 'button', text: '拉取',
+                    onclick: () => pickMagpieModel(),
+                })) : null,
+            magpie.enabled === true ? row({ icon: 'sliders', label: '推理强度', hint: '推理模型会用思维链；手机聊天建议 none 或 low，省 token 也更像人说话' },
+                choices([['none', '关'], ['low', '低'], ['high', '高'], ['max', '最高']], magpie.reasoning || 'low', value => patchMagpie({ reasoning: value }))) : null,
+            magpie.enabled === true ? row({ icon: 'sparkle', label: '温度', hint: '越高越发散，聊天建议 0.8–1.0' },
+                slider(0, 1.5, 0.05, Number(magpie.temperature) || 0.9, v => v.toFixed(2), value => patchMagpie({ temperature: value }))) : null,
+            magpie.enabled === true ? row({ icon: 'bolt', label: '测试连接', hint: '真的生成一次，确认整条链路通' },
+                h('button', {
+                    class: 'mp-btn small', type: 'button', text: '测试',
+                    onclick: () => testMagpie(),
+                })) : null,
+            magpie.enabled === true ? helpRow('排查提示', '若报 403 / 网页来源：改成「经酒馆转发」；若报 Key 失效：回 magpie 重新复制；若报连不上：确认 magpie 开着局域网访问、端口对、防火墙放行。') : null,
         ]));
 
         /* ---------------- 生图 ---------------- */
@@ -451,6 +493,77 @@ export function mountSettings(host, { nav }) {
         current.ai = { ...(current.ai || {}), ...patch };
         saveNow('settings');
         render();
+    }
+
+    /** 二创：改 magpie 那一块配置。 */
+    function patchMagpie(patch) {
+        const current = getSettings();
+        current.ai = { ...(current.ai || {}) };
+        current.ai.magpie = { ...(current.ai.magpie || {}), ...patch };
+        if (patch.baseUrl !== undefined) current.ai.magpie.baseUrl = normalizeBase(patch.baseUrl);
+        saveNow('settings');
+        render();
+    }
+
+    /** 二创：从 magpie 拉一遍模型列表，点哪个填哪个。 */
+    async function pickMagpieModel() {
+        const current = getSettings().ai?.magpie || {};
+        if (!current.baseUrl) { toast('先把 magpie 地址填上'); return; }
+        const loading = sheet({ title: '正在读取模型…', content: h('div', { class: 'mp-sheet-body' }, h('div', { class: 'mp-st-hint', text: '正在问 magpie 有哪些模型' })) });
+        let list = [];
+        try {
+            list = await magpieListModels();
+        } catch (error) {
+            loading?.close?.();
+            sheet({
+                title: '读不到模型列表',
+                content: h('div', { class: 'mp-sheet-body' }, h('pre', { class: 'mp-pre', text: explainError(0, error?.message || error) })),
+            });
+            return;
+        }
+        loading?.close?.();
+        if (!list.length) {
+            toast('magpie 没返回模型');
+            return;
+        }
+        const box = h('div', { class: 'mp-sheet-body' });
+        for (const item of list) {
+            box.appendChild(h('button', {
+                class: 'mp-btn small' + (current.model === item.id ? ' is-on' : ''),
+                type: 'button',
+                text: item.id,
+                title: item.label,
+                style: { display: 'block', width: '100%', textAlign: 'left', marginBottom: '6px' },
+                onclick: () => {
+                    patchMagpie({ model: item.id });
+                    toast('已选 ' + item.id);
+                },
+            }));
+        }
+        sheet({ title: 'magpie 模型（' + list.length + '）', content: box });
+    }
+
+    /** 二创：真的生成一次，验证整条链路。 */
+    async function testMagpie() {
+        const current = getSettings().ai?.magpie || {};
+        if (!current.baseUrl || !current.model) { toast('先把地址和模型填上'); return; }
+        toast('正在测试…');
+        try {
+            const result = await magpiePing();
+            sheet({
+                title: '通了',
+                content: h('div', { class: 'mp-sheet-body' },
+                    h('div', { class: 'mp-row__label', text: result.model }),
+                    h('div', { class: 'mp-st-hint', text: result.baseUrl }),
+                    h('pre', { class: 'mp-pre', text: result.text || '(空)' }),
+                ),
+            });
+        } catch (error) {
+            sheet({
+                title: '没通',
+                content: h('div', { class: 'mp-sheet-body' }, h('pre', { class: 'mp-pre', text: explainError(0, error?.message || error) })),
+            });
+        }
     }
 
     function patchTTS(patch) {

@@ -145,9 +145,39 @@ SillyTavern/data/<用户名>/extensions/third-party/st-mirage-phone/
 ## 设置
 
 - **手机 AI 接口**：默认跟随主 API；也可填自己的 OpenAI 兼容地址 / Key / 模型，失败自动回退
+- **局域网 magpie**（二创新增）：把手机接到家里的 magpie 网关上，正文仍走酒馆自己的连接
 - **AI 配图**：OpenAI 兼容或 SD WebUI；没配置时用内置程序化照片
 - **评论风格**：真实网友 / 温柔 / 毒舌 / 二次元 / 文艺 / 简短
 - **性能模式**：自动 / 流畅 / 完整；低配自动关掉毛玻璃、阴影和动画
+
+### 局域网 magpie 怎么接
+
+magpie 是个本地模型网关，默认在 `127.0.0.1:3425`。手机上想用它，直接在浏览器里 `fetch` 是不通的：magpie 的 `/v1` 只认「登记在 Settings → Network and sharing → Web pages 里」的网页来源，没登记就 403；预检 OPTIONS 也常常过不去。
+
+所以这里默认走**酒馆服务端转发**：
+
+```
+手机浏览器 → 酒馆 /api/backends/chat-completions/generate → magpie /v1/chat/completions
+```
+
+酒馆进程用 node fetch 出网，不带 Origin，magpie 只校验 gateway key，于是整条链路成立。
+
+设置 → 局域网 magpie：
+
+| 字段 | 填什么 |
+| --- | --- |
+| 启用 magpie 网关 | 打开 |
+| 连接方式 | **经酒馆转发**（推荐）／浏览器直连 |
+| magpie 地址 | `http://192.168.1.20:3425`，会自动补 `/v1`；也可以只写 `192.168.1.20:3425` |
+| Gateway Key | magpie 的 Settings → Network and sharing 里复制，形如 `sk-magpie-key-…` |
+| 模型 | 点「拉取模型列表」挑，或手填 `trae-cn/deepseek-v4.1-flash-max` |
+| 推理强度 | 聊天建议 **关** 或 **低**——推理模型会把 `max_tokens` 全花在思维链上，正文变空 |
+
+点「测试连接」会真的生成一次，通不通当场知道。报错都会被翻成人话（403 网页来源、Key 失效、连不上、超时各自不同）。
+
+**为什么推荐转发模式**：直连模式要求先把酒馆地址（比如 `http://192.168.1.20:8000`）加进 magpie 的 Web pages，否则一律 403；而且浏览器跨域预检不一定被放行。转发模式不需要动 magpie 的任何白名单。
+
+**兼容性**：转发模式用酒馆 `/api/backends/chat-completions` 的 `reverse_proxy` + `proxy_password`，这是 1.12 起就有的能力，1.13+ 都可用。手机浏览器所在设备只要能打开酒馆页面，就能用到 magpie——不需要那台设备自己能连到 3425 端口。
 
 ## 数据与隐私
 
@@ -173,6 +203,7 @@ index.js              扩展入口：挂载、事件、注入、设置面板
 src/
   phone.js            手机外壳、路由、拖拽缩放、灵动岛
   st.js               酒馆桥接（generateRawData / 注入 / 写回聊天）
+  magpie.js           局域网 magpie 网关（经酒馆转发 / 直连，有测试）
   state.js            默认值与数据迁移
   store.js            当前聊天数据、人物、App 安装
   ai.js               回复、人物提取、内容、评论、股市
@@ -195,6 +226,14 @@ tools/                本地调试与截图
 **约会没写进聊天？** 需要先打开角色聊天；约会会以用户消息发送并触发一次生成。
 
 **换聊天手机空了？** 每个聊天一部手机；可用设置里的导出/导入。
+
+**magpie 报 403 / 网页来源被拒？** 你走的是直连模式。改成「经酒馆转发」，或者把酒馆地址加进 magpie 的 Settings → Network and sharing → Web pages。
+
+**magpie 报 Key 失效？** magpie 里重新复制 gateway key；顺便确认 Network and sharing 里的局域网访问是开着的。
+
+**magpie 有返回但手机里是空的？** 推理模型的思维链吃掉了 `max_tokens`。设置 → 局域网 magpie → 推理强度改成「关」，或者把回复长度调大。插件已经会自动降档重试一次。
+
+**手机连不上 magpie，但电脑上能开？** 转发模式下手机只要连得上酒馆就行，不需要它自己能连 3425。检查酒馆的 `listen` / `whitelist`，别让手机被挡在酒馆门外。
 
 ## License
 

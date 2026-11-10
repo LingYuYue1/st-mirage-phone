@@ -1,5 +1,19 @@
 # 更新日志
 
+## 1.7.0 — 2026-11-11 · 局域网 magpie 二创
+
+- **新增局域网 magpie 网关**：设置 → 局域网 magpie，可把手机的全部生成接到家里的 magpie（`127.0.0.1:3425` 或局域网 IP）上，正文仍走酒馆自己的连接
+  - **经酒馆转发（默认）**：`POST /api/backends/chat-completions/generate` + `reverse_proxy` + `proxy_password`，由酒馆服务端出网，不带 Origin，绕开 magpie 的网页来源白名单与 CORS 预检
+  - **浏览器直连**：浏览器直接打 magpie `/v1/chat/completions`，需先把酒馆地址登记进 magpie 的 Settings → Network and sharing → Web pages
+  - **地址自动归一化**：`192.168.1.20:3425` / `http://h:3425/` / `http://h:3425/v1/chat/completions` 都收成 `http://h:3425/v1`
+  - **拉取模型列表**：走酒馆 `/status`（转发）或 magpie `/v1/models`（直连），点一个就填进模型框
+  - **测试连接**：真跑一次生成，通不通当场知道
+  - **推理强度四档**：关 / 低 / 高 / 最高；聊天默认低。正文为空而只有 reasoning 时自动降档重试一次，json 模式还能从 reasoning 里捞回 JSON
+  - **报错翻成人话**：网页来源被拒、gateway key 失效、连不上、超时、404、429 各自给出可操作的下一步
+- **新增 `src/magpie.js`** 与 `test/magpie.test.mjs`（10 条用例，覆盖归一化、转发载荷、降档重试、直连、模型列表、错误映射）
+- **设置面板**：magpie 开启时，「手机 AI 接口」顶部提示当前走 magpie，避免「跟随酒馆主 API」的误解
+- **预览环境**：`?magpie=1` 可直接看完整的 magpie 表单
+
 ## 1.6.2 — 2026-11-09
 
 - **桌面打包流程（Windows .exe）**：`desktop/build-web.mjs` 把 preview/src/css 复制到 `desktop/www`；main.js 优先用 www 作静态根；`npm run dist` = 构建 + electron-builder 出 NSIS 安装包（`desktop/dist/`）

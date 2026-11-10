@@ -4,6 +4,27 @@
  */
 export const MODULE = 'mirage_phone';
 
+// 二创：局域网 magpie 适配层（不反向 import 本文件，无循环依赖）
+import { magpieGenerate, magpieListModels as magpieListModelsRaw, magpiePing as magpiePingRaw, normalizeBase, explainError } from './magpie.js';
+
+/**
+ * 给设置界面用的包装：不传配置时自己从酒馆 extensionSettings 里读。
+ * （magpie.js 不能 import 本文件，所以配置注入放在这一层。）
+ */
+export function magpieListModels(override) {
+    const config = override || magpieAI();
+    if (!config) throw new Error('先把地址和 Key 填上');
+    return magpieListModelsRaw(config);
+}
+
+export function magpiePing(override) {
+    const config = override || magpieAI();
+    if (!config) throw new Error('先把地址、Key、模型填上');
+    return magpiePingRaw(config);
+}
+
+export { magpieGenerate, normalizeBase, explainError };
+
 // 在 APK 里（WebView）时给 <html> 打个标记：隐藏自绘状态栏和灵动岛，让真机的显示区域全给内容
 try {
     if (String(globalThis.navigator?.userAgent || '').includes('MiragePhone')) {
@@ -305,6 +326,31 @@ export function chatId() {
  */
 const GENERATE_TIMEOUT = 120000;
 
+/**
+ * 二创：局域网 magpie 配置。
+ * 单独抽出来，是为了让「经酒馆转发」这条链路能在 generateText 的最前面短路，
+ * 不再走酒馆当前连接（正文可能配的是别的模型）。
+ */
+function magpieAI() {
+    try {
+        const config = ctx()?.extensionSettings?.mirage_phone?.ai?.magpie;
+        if (!config || config.enabled !== true) return null;
+        const baseUrl = String(config.baseUrl || '').trim();
+        const model = String(config.model || '').trim();
+        if (!baseUrl || !model) return null;
+        return {
+            enabled: true,
+            mode: config.mode === 'direct' ? 'direct' : 'proxy',
+            baseUrl,
+            apiKey: String(config.apiKey || ''),
+            model,
+            reasoning: String(config.reasoning || 'low'),
+            temperature: Number(config.temperature) || 0.9,
+            proxyPath: String(config.proxyPath || '/api/backends/chat-completions'),
+        };
+    } catch { return null; }
+}
+
 function customAI() {
     try {
         const config = ctx()?.extensionSettings?.mirage_phone?.ai;
@@ -383,6 +429,18 @@ export async function generateText({ system = '', prompt = '', length = 320, jso
     };
 
     async function attempt() {
+        // 二创：启用了局域网 magpie 就整条链路走它，不再看酒馆当前连接。
+        // 这样正文可以用官方 API，手机这边单独吃家里的 magpie。
+        const magpie = magpieAI();
+        if (magpie) {
+            return await magpieGenerate({
+                system: String(system || '').trim(),
+                prompt: cleanPrompt,
+                length: request.responseLength,
+                json,
+                settings: { ai: { magpie } },
+            }, magpie);
+        }
         const custom = customAI();
         if (custom) {
             // 设置里选了独立 API 就只走独立 API，不再偷偷回退主 API

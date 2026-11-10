@@ -80,7 +80,20 @@ export function defaultSettings() {
         aiApp: { provider: 'inherit', baseUrl: '', apiKey: '', model: '' },
         aiApps: {},
         ai: {
-            useMain: true, baseUrl: '', apiKey: '', model: '', commentStyle: '真实网友', commentTone: '', commentStrength: 100, length: 320, style: DEFAULT_STYLE },
+            useMain: true, baseUrl: '', apiKey: '', model: '', commentStyle: '真实网友', commentTone: '', commentStrength: 100, length: 320, style: DEFAULT_STYLE,
+            // 二创：局域网 magpie 网关。mode='proxy' 走酒馆服务端转发（推荐，绕开网页来源白名单和 CORS）；
+            // mode='direct' 是浏览器直连，需要先在 magpie 的 Web pages 里登记酒馆地址。
+            magpie: {
+                enabled: false,
+                mode: 'proxy',
+                baseUrl: '',
+                apiKey: '',
+                model: '',
+                reasoning: 'low',
+                temperature: 0.9,
+                proxyPath: '/api/backends/chat-completions',
+            },
+        },
         replyInGroup: true,
         showSpoilers: false,
         signature: '把手机放进剧情里',
@@ -143,6 +156,17 @@ export function normalizeSettings(raw) {
     s.ai.length = clamp(Math.round(Number(s.ai.length) || 320), 120, 1200);
     if (typeof s.ai.style !== 'string' || !s.ai.style.trim()) s.ai.style = DEFAULT_STYLE;
     s.ai.style = s.ai.style.slice(0, 4000);
+    // 二创：magpie 配置兜底（老设置文件里没有这一段）
+    s.ai.magpie = s.ai.magpie && typeof s.ai.magpie === 'object' ? s.ai.magpie : {};
+    const magpie = s.ai.magpie;
+    magpie.enabled = magpie.enabled === true;
+    magpie.mode = magpie.mode === 'direct' ? 'direct' : 'proxy';
+    magpie.baseUrl = String(magpie.baseUrl || '').slice(0, 300);
+    magpie.apiKey = String(magpie.apiKey || '').slice(0, 300);
+    magpie.model = String(magpie.model || '').slice(0, 120);
+    magpie.reasoning = ['none', 'low', 'high', 'max'].includes(magpie.reasoning) ? magpie.reasoning : 'low';
+    magpie.temperature = Math.max(0, Math.min(2, Number(magpie.temperature) || 0.9));
+    magpie.proxyPath = String(magpie.proxyPath || '/api/backends/chat-completions').slice(0, 200);
     if (!s.installId) s.installId = uid();
     s.pos = { x: Number.isFinite(s.pos?.x) ? s.pos.x : null, y: Number.isFinite(s.pos?.y) ? s.pos.y : null };
     return s;

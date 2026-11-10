@@ -685,6 +685,9 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
+    /* 放在 .mp-row 的 flex 行里时不要被文字挤扁成竖排两字 */
+    flex: 0 0 auto;
+    white-space: nowrap;
     -webkit-tap-highlight-color: transparent;
 }
 

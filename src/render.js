@@ -164,6 +164,14 @@ const ICON_REDESIGN = {
 };
 Object.assign(ICONS, ICON_REDESIGN);
 
+// 二创（magpie 网关设置用到的几个补充图标）
+Object.assign(ICONS, {
+    key: '<circle cx="8.4" cy="8.4" r="4.2"/><path d="m11.4 11.4 7.2 7.2M15.4 15.4l2.2-2.2M17.8 17.8l2.2-2.2"/>',
+    sliders: '<path d="M4 7.2h16M4 16.8h16"/><circle cx="9" cy="7.2" r="2.2"/><circle cx="15.6" cy="16.8" r="2.2"/>',
+    bolt: '<path d="M13.4 3.2 6 13.6h5l-1.4 7.2L17.6 10h-5Z"/>',
+    link: '<path d="M10.2 13.8a4 4 0 0 0 5.6 0l2.6-2.6a4 4 0 1 0-5.6-5.6l-1 1"/><path d="M13.8 10.2a4 4 0 0 0-5.6 0l-2.6 2.6a4 4 0 1 0 5.6 5.6l1-1"/>',
+});
+
 const SPRITE_ID = 'mp-icon-sprite';
 
 export function ensureSprite() {
