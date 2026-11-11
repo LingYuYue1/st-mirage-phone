@@ -23,6 +23,8 @@ import { plotSystemPrompt, plotUserPrompt, plotFallback, toneOf } from './plot.j
 import { sparkSystemPrompt, sparkUserPrompt, sparkFallback, dateSystemPrompt, dateFallback } from './spark.js';
 import { webSystemPrompt, webUserPrompt, webFallback } from './web.js';
 import { flatVariables, varsToText } from './mvu.js';
+// 二创：世界书人物扫描（纯规则，不花 token）
+import { worldBookPeople, looksLikeName } from './worldcast.js';
 
 const busy = new Set();
 
@@ -440,6 +442,10 @@ export async function previewWorldContext() {
 /**
  * 从当前角色卡里找出这个世界里的人。
  * 用户说的是「和卡里的人物聊天」，所以人物是手机通讯录的基本单位。
+ *
+ * 二创：**先用世界书和 MVU 变量做确定性扫描**（`worldBookPeople()`，纯规则、不花 token），
+ * 再让模型补「聊天里出现过但世界书没写」的人。原来只喂聊天记录和角色卡简介，
+ * 写在世界书里的客户、助理一个都进不了通讯录。
  */
 export async function extractCast() {
     const current = currentCharacter();
@@ -447,27 +453,66 @@ export async function extractCast() {
     if (current.group) throw new Error('群聊卡暂时不支持提取人物，先在酒馆里选一张单人卡');
     const user = userName();
     const card = findCharacter(current.name) || current;
+
+    // 1) 世界书 + MVU：确定性来源，优先
+    let fromWorld = [];
+    try {
+        fromWorld = await worldBookPeople({ limit: 60 });
+    } catch (error) {
+        console.warn('[幻镜手机] 扫世界书人物失败', error);
+    }
+
+    // 2) 模型：补聊天里出现但世界书没写的人
     const memory = memoryContext(12);
     const story = importantStoryContext(80, 840);
-    const raw = await generateText({
-        system: castSystemPrompt({ user }),
-        prompt: castUserPrompt({ card, story, memory, user }),
-        length: 1500,
-        json: true,
+    let fromModel = [];
+    try {
+        const raw = await generateText({
+            system: castSystemPrompt({ user }),
+            prompt: castUserPrompt({ card, story, memory, user, known: fromWorld.map(person => person.name) }),
+            length: 1500,
+            json: true,
+        });
+        const json = extractJson(raw);
+        fromModel = Array.isArray(json?.people) ? json.people : [];
+    } catch (error) {
+        console.warn('[幻镜手机] 模型找人物失败，只用世界书里认出的人', error);
+    }
+
+    const normalize = person => ({
+        name: String(person?.name || '').trim(),
+        role: String(person?.role || '').trim(),
+        relation: String(person?.relation || '').trim(),
+        desc: String(person?.desc || person?.persona || '').trim(),
+        style: String(person?.style || '').trim(),
     });
-    const json = extractJson(raw);
-    const people = Array.isArray(json?.people) ? json.people : [];
-    if (!people.length) throw new Error('这次没找出人来，换一个模型再试');
-    const cast = people
-        .map(person => ({
-            name: String(person?.name || '').trim(),
-            role: String(person?.role || '').trim(),
-            relation: String(person?.relation || '').trim(),
-            desc: String(person?.desc || person?.persona || '').trim(),
-            style: String(person?.style || '').trim(),
-        }))
-        .filter(person => person.name && person.name !== user)
-        .slice(0, 8);
+
+    // 世界书的人排在前面（更可信），模型补的在后面
+    // 模型偶尔会把功能条目的残片当人名（「主动发消」「业务详情」），
+    // 所以模型那份要额外过一道：名字必须像人名，而且不能是「动词+名词」的功能词。
+    const FUNCTIONAL_NAME = /(发消|发消息|指令|提示|格式|插入|说明|规则|列表|表头|总结|记忆|索引|变量|面板|界面|业务|流程|技能|收费|标准|数据|人设|主动)/;
+    const combined = [
+        ...fromWorld.map(normalize),
+        ...fromModel.map(normalize).filter(person => looksLikeName(person.name) && !FUNCTIONAL_NAME.test(person.name)),
+    ].filter(person => person.name && person.name !== user);
+
+    if (!combined.length) throw new Error('这次没找出人来：世界书里没有人物条目，模型也没从聊天里认出来');
+
+    // 同名合并：世界书那份优先，模型只补空缺字段
+    const byName = new Map();
+    for (const person of combined) {
+        const previous = byName.get(person.name);
+        if (!previous) { byName.set(person.name, person); continue; }
+        byName.set(person.name, {
+            ...person,
+            ...previous,
+            role: previous.role || person.role,
+            relation: previous.relation || person.relation,
+            desc: previous.desc || person.desc,
+            style: previous.style || person.style,
+        });
+    }
+    const cast = [...byName.values()].slice(0, 60);
     if (!cast.length) throw new Error('没找到可以放进通讯录的人');
 
     // 已有的人以"第一次认出来的"为准：模型后面把货车司机说成屠夫，也不许改掉
@@ -483,9 +528,12 @@ export async function extractCast() {
             style: prev.style || person.style,
         };
     });
-    // 新一版没提到的人也别丢
+    // 新一版没提到的人也别丢（但要把以前误收进来的功能词清掉）
+    const FUNCTIONAL = /(发消|发消息|指令|提示|格式|插入|说明|规则|列表|表头|总结|记忆|索引|变量|面板|界面|业务|流程|技能|收费|标准|数据|人设|主动)/;
     for (const person of existing.values()) {
-        if (!merged.some(item => item.name === person.name)) merged.push(person);
+        if (merged.some(item => item.name === person.name)) continue;
+        if (FUNCTIONAL.test(person.name)) continue;   // 旧数据里的脏名字，丢掉
+        merged.push(person);
     }
     // 主角本人的描述以角色卡为准（比模型猜的可靠）
     const cardName = String(card?.name || '').trim();

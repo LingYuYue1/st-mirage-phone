@@ -323,12 +323,13 @@ export function castSystemPrompt({ user }) {
         '如果聊天记录里只有一两个人，可以补充聊天里暗示存在的家人、同事、店主等，但不要编造大事件。',
         '人物要属于当前这个世界，不要混进上一段聊天或别的角色卡的人。',
         '如果给了长期记忆/摘要，优先从那里找人；没有记忆时再挑聊天里重要的内容。',
+        '如果给了「已经认出来的人」，不要重复列出他们，只补聊天里出现但名单上没有的人。',
         '只输出 JSON，不要别的内容：',
         '{"people":[{"name":"名字","role":"身份（例如：修表匠 / 旧友 / 弟弟）","relation":"和' + user + '的关系","desc":"一两句人设","style":"说话方式"}]}',
     ].join('\n');
 }
 
-export function castUserPrompt({ card, story = [], user = '我' }) {
+export function castUserPrompt({ card, story = [], user = '我', known = [] }) {
     const parts = [];
     if (story.length) {
         parts.push('当前聊天的最近内容（以此为准）：');
@@ -340,7 +341,13 @@ export function castUserPrompt({ card, story = [], user = '我' }) {
         if (card.description) parts.push('简介：' + trim(card.description, 600));
         if (card.scenario) parts.push('场景：' + trim(card.scenario, 400));
     }
-    parts.push('\n请优先从上面的聊天记录里找出 4 到 8 个这个世界里的人。');
+    // 二创：告诉模型「这些已经从世界书里认出来了」，避免重复也不要漏
+    if (known.length) {
+        parts.push('\n已经从世界书里认出来的人（不用重复列出）：' + known.slice(0, 40).join('、'));
+        parts.push('请只补充聊天里出现、但上面这份名单里没有的人。如果没有新人，返回 {"people":[]}。');
+    } else {
+        parts.push('\n请优先从上面的聊天记录里找出 4 到 8 个这个世界里的人。');
+    }
     return parts.join('\n');
 }
 

@@ -50,7 +50,7 @@ window.addEventListener('unhandledrejection', event => {
     if (text) showBootError(text);
 });
 
-const VERSION = '1.9.0';
+const VERSION = '1.9.1';
 let phone = null;
 let started = false;
 let panel = null;
